@@ -78,8 +78,19 @@ const initialOrders = [
       { id: 1, description: 'Ignition Coil', qty: 1, price: 74.99, vendor: 'AutoZone' },
       { id: 2, description: 'Spark Plugs', qty: 6, price: 8.5, vendor: "O'Reilly's" },
     ],
+    declinedWork: [
+      {
+        id: 1,
+        description: 'Recommend full tune-up and air filter service',
+        estimatedAmount: 289.99,
+        date: '2026-03-01',
+      },
+    ],
     notes: 'Customer approved up to $650. Needs done by tomorrow afternoon.',
     invoicePaid: false,
+    isComeback: false,
+    comebackReason: '',
+    comebackOriginalRo: '',
   },
   {
     id: 1002,
@@ -95,8 +106,12 @@ const initialOrders = [
       { id: 1, description: 'Front Brake Pads', qty: 1, price: 69.99, vendor: 'AutoZone' },
       { id: 2, description: 'Front Rotors', qty: 2, price: 55, vendor: "O'Reilly's" },
     ],
+    declinedWork: [],
     notes: 'Estimate sent. Waiting on customer response.',
     invoicePaid: false,
+    isComeback: false,
+    comebackReason: '',
+    comebackOriginalRo: '',
   },
   {
     id: 1003,
@@ -115,8 +130,19 @@ const initialOrders = [
       { id: 1, description: 'Valve Cover Gasket Set', qty: 1, price: 48.99, vendor: 'RockAuto' },
       { id: 2, description: 'Alternator', qty: 1, price: 219.99, vendor: 'RockAuto' },
     ],
+    declinedWork: [
+      {
+        id: 2,
+        description: 'Transmission service recommended',
+        estimatedAmount: 219.99,
+        date: '2026-03-04',
+      },
+    ],
     notes: 'Truck is done. Test drove fine.',
     invoicePaid: false,
+    isComeback: true,
+    comebackReason: 'Customer returned for recheck after prior alternator install.',
+    comebackOriginalRo: 'RO-2388',
   },
 ];
 
@@ -161,6 +187,15 @@ function buttonStyle(kind = 'primary') {
     };
   }
 
+  if (kind === 'success') {
+    return {
+      ...base,
+      background: '#065f46',
+      color: '#fff',
+      borderColor: '#065f46',
+    };
+  }
+
   return {
     ...base,
     background: '#111827',
@@ -197,29 +232,41 @@ function sectionTitleStyle() {
   };
 }
 
+function badgeStyle(background, color = '#111827') {
+  return {
+    display: 'inline-block',
+    padding: '4px 8px',
+    borderRadius: 999,
+    background,
+    color,
+    fontSize: 12,
+    fontWeight: 700,
+  };
+}
+
 export default function App() {
   const [settings, setSettings] = useState(() => {
-    const saved = localStorage.getItem('sons_shop_settings_phase2');
+    const saved = localStorage.getItem('sons_shop_settings_phase3');
     return saved ? JSON.parse(saved) : defaultSettings;
   });
 
   const [customers, setCustomers] = useState(() => {
-    const saved = localStorage.getItem('sons_phase2_customers');
+    const saved = localStorage.getItem('sons_phase3_customers');
     return saved ? JSON.parse(saved) : initialCustomers;
   });
 
   const [vehicles, setVehicles] = useState(() => {
-    const saved = localStorage.getItem('sons_phase2_vehicles');
+    const saved = localStorage.getItem('sons_phase3_vehicles');
     return saved ? JSON.parse(saved) : initialVehicles;
   });
 
   const [orders, setOrders] = useState(() => {
-    const saved = localStorage.getItem('sons_phase2_orders');
+    const saved = localStorage.getItem('sons_phase3_orders');
     return saved ? JSON.parse(saved) : initialOrders;
   });
 
   const [selectedOrderId, setSelectedOrderId] = useState(() => {
-    const saved = localStorage.getItem('sons_phase2_selected_order');
+    const saved = localStorage.getItem('sons_phase3_selected_order');
     return saved ? Number(saved) : initialOrders[0]?.id ?? null;
   });
 
@@ -242,6 +289,9 @@ export default function App() {
     plate: '',
   });
 
+  const [editingCustomerId, setEditingCustomerId] = useState(null);
+  const [editingVehicleId, setEditingVehicleId] = useState(null);
+
   const [roForm, setRoForm] = useState({
     customerId: '',
     vehicleId: '',
@@ -249,6 +299,9 @@ export default function App() {
     advisor: defaultSettings.advisors[0] || 'Johnny',
     tech: defaultSettings.techs[0] || 'Johnny',
     status: defaultSettings.statuses[0] || 'Waiting for Diagnosis',
+    isComeback: false,
+    comebackReason: '',
+    comebackOriginalRo: '',
   });
 
   const [laborForm, setLaborForm] = useState({
@@ -264,25 +317,30 @@ export default function App() {
     vendor: defaultSettings.vendors[0] || 'AutoZone',
   });
 
+  const [declinedForm, setDeclinedForm] = useState({
+    description: '',
+    estimatedAmount: '',
+  });
+
   useEffect(() => {
-    localStorage.setItem('sons_shop_settings_phase2', JSON.stringify(settings));
+    localStorage.setItem('sons_shop_settings_phase3', JSON.stringify(settings));
   }, [settings]);
 
   useEffect(() => {
-    localStorage.setItem('sons_phase2_customers', JSON.stringify(customers));
+    localStorage.setItem('sons_phase3_customers', JSON.stringify(customers));
   }, [customers]);
 
   useEffect(() => {
-    localStorage.setItem('sons_phase2_vehicles', JSON.stringify(vehicles));
+    localStorage.setItem('sons_phase3_vehicles', JSON.stringify(vehicles));
   }, [vehicles]);
 
   useEffect(() => {
-    localStorage.setItem('sons_phase2_orders', JSON.stringify(orders));
+    localStorage.setItem('sons_phase3_orders', JSON.stringify(orders));
   }, [orders]);
 
   useEffect(() => {
     if (selectedOrderId !== null && selectedOrderId !== undefined) {
-      localStorage.setItem('sons_phase2_selected_order', String(selectedOrderId));
+      localStorage.setItem('sons_phase3_selected_order', String(selectedOrderId));
     }
   }, [selectedOrderId]);
 
@@ -318,6 +376,7 @@ export default function App() {
         order.status,
         order.complaint,
         order.tech,
+        order.comebackReason,
         customer?.name,
         customer?.phone,
         vehicle?.make,
@@ -343,15 +402,52 @@ export default function App() {
     const openCount = orders.filter((o) => o.status !== 'Closed').length;
     const waitingApproval = orders.filter((o) => o.status === 'Waiting for Approval').length;
     const readyPickup = orders.filter((o) => o.status === 'Ready For Pickup').length;
+    const comebackCount = orders.filter((o) => o.isComeback).length;
     const totalSales = orders.reduce((sum, order) => sum + calcTotal(order), 0);
 
-    return { openCount, waitingApproval, readyPickup, totalSales };
+    return { openCount, waitingApproval, readyPickup, comebackCount, totalSales };
   }, [orders, settings]);
 
   const customerVehicles = useMemo(() => {
     if (!roForm.customerId) return [];
     return vehicles.filter((v) => v.customerId === Number(roForm.customerId));
   }, [roForm.customerId, vehicles]);
+
+  const productivityRows = useMemo(() => {
+    return settings.techs.map((tech) => {
+      const techOrders = orders.filter((order) => order.tech === tech);
+      const roCount = techOrders.length;
+      const flaggedHours = techOrders.reduce(
+        (sum, order) =>
+          sum + order.labor.reduce((laborSum, line) => laborSum + Number(line.hours || 0), 0),
+        0
+      );
+      const sales = techOrders.reduce((sum, order) => sum + calcTotal(order), 0);
+      const comebackCount = techOrders.filter((order) => order.isComeback).length;
+
+      return {
+        tech,
+        roCount,
+        flaggedHours,
+        sales,
+        comebackCount,
+      };
+    });
+  }, [orders, settings]);
+
+  const allDeclinedWork = useMemo(() => {
+    return orders.flatMap((order) =>
+      (order.declinedWork || []).map((item) => ({
+        ...item,
+        ro: order.ro,
+        customerName: getCustomer(order.customerId)?.name || '',
+        vehicleLabel: (() => {
+          const v = getVehicle(order.vehicleId);
+          return v ? `${v.year} ${v.make} ${v.model}` : '';
+        })(),
+      }))
+    );
+  }, [orders, customers, vehicles]);
 
   function createCustomer() {
     if (!customerForm.name.trim() || !customerForm.phone.trim()) {
@@ -371,6 +467,44 @@ export default function App() {
     setVehicleForm((prev) => ({ ...prev, customerId: String(newCustomer.id) }));
     setRoForm((prev) => ({ ...prev, customerId: String(newCustomer.id), vehicleId: '' }));
     setActiveTab('customers');
+  }
+
+  function startEditCustomer(customer) {
+    setEditingCustomerId(customer.id);
+    setCustomerForm({
+      name: customer.name || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+    });
+  }
+
+  function saveCustomerEdit() {
+    if (!editingCustomerId) return;
+    if (!customerForm.name.trim() || !customerForm.phone.trim()) {
+      alert('Customer name and phone are required.');
+      return;
+    }
+
+    setCustomers((prev) =>
+      prev.map((customer) =>
+        customer.id === editingCustomerId
+          ? {
+              ...customer,
+              name: customerForm.name.trim(),
+              phone: customerForm.phone.trim(),
+              email: customerForm.email.trim(),
+            }
+          : customer
+      )
+    );
+
+    setEditingCustomerId(null);
+    setCustomerForm({ name: '', phone: '', email: '' });
+  }
+
+  function cancelCustomerEdit() {
+    setEditingCustomerId(null);
+    setCustomerForm({ name: '', phone: '', email: '' });
   }
 
   function createVehicle() {
@@ -408,6 +542,68 @@ export default function App() {
     setActiveTab('customers');
   }
 
+  function startEditVehicle(vehicle) {
+    setEditingVehicleId(vehicle.id);
+    setVehicleForm({
+      customerId: String(vehicle.customerId),
+      year: String(vehicle.year || ''),
+      make: vehicle.make || '',
+      model: vehicle.model || '',
+      vin: vehicle.vin || '',
+      mileage: String(vehicle.mileage || ''),
+      plate: vehicle.plate || '',
+    });
+  }
+
+  function saveVehicleEdit() {
+    if (!editingVehicleId) return;
+    if (!vehicleForm.customerId || !vehicleForm.make.trim() || !vehicleForm.model.trim()) {
+      alert('Customer, make, and model are required.');
+      return;
+    }
+
+    setVehicles((prev) =>
+      prev.map((vehicle) =>
+        vehicle.id === editingVehicleId
+          ? {
+              ...vehicle,
+              customerId: Number(vehicleForm.customerId),
+              year: Number(vehicleForm.year || 0),
+              make: vehicleForm.make.trim(),
+              model: vehicleForm.model.trim(),
+              vin: vehicleForm.vin.trim(),
+              mileage: Number(vehicleForm.mileage || 0),
+              plate: vehicleForm.plate.trim(),
+            }
+          : vehicle
+      )
+    );
+
+    setEditingVehicleId(null);
+    setVehicleForm({
+      customerId: '',
+      year: '',
+      make: '',
+      model: '',
+      vin: '',
+      mileage: '',
+      plate: '',
+    });
+  }
+
+  function cancelVehicleEdit() {
+    setEditingVehicleId(null);
+    setVehicleForm({
+      customerId: '',
+      year: '',
+      make: '',
+      model: '',
+      vin: '',
+      mileage: '',
+      plate: '',
+    });
+  }
+
   function createRepairOrder() {
     if (!roForm.customerId || !roForm.vehicleId || !roForm.complaint.trim()) {
       alert('Customer, vehicle, and complaint are required.');
@@ -427,8 +623,12 @@ export default function App() {
       complaint: roForm.complaint.trim(),
       labor: [],
       parts: [],
+      declinedWork: [],
       notes: '',
       invoicePaid: false,
+      isComeback: !!roForm.isComeback,
+      comebackReason: roForm.comebackReason.trim(),
+      comebackOriginalRo: roForm.comebackOriginalRo.trim(),
     };
 
     setOrders((prev) => [newOrder, ...prev]);
@@ -437,13 +637,15 @@ export default function App() {
       ...prev,
       complaint: '',
       vehicleId: '',
+      isComeback: false,
+      comebackReason: '',
+      comebackOriginalRo: '',
     }));
     setActiveTab('dashboard');
   }
 
   function addLaborLine() {
     if (!selectedOrder) return;
-
     if (!laborForm.description.trim() || !laborForm.hours) {
       alert('Labor description and hours are required.');
       return;
@@ -458,9 +660,7 @@ export default function App() {
 
     setOrders((prev) =>
       prev.map((order) =>
-        order.id === selectedOrder.id
-          ? { ...order, labor: [...order.labor, newLine] }
-          : order
+        order.id === selectedOrder.id ? { ...order, labor: [...order.labor, newLine] } : order
       )
     );
 
@@ -473,7 +673,6 @@ export default function App() {
 
   function addPartLine() {
     if (!selectedOrder) return;
-
     if (!partForm.description.trim() || !partForm.qty || partForm.price === '') {
       alert('Part description, qty, and price are required.');
       return;
@@ -489,9 +688,7 @@ export default function App() {
 
     setOrders((prev) =>
       prev.map((order) =>
-        order.id === selectedOrder.id
-          ? { ...order, parts: [...order.parts, newPart] }
-          : order
+        order.id === selectedOrder.id ? { ...order, parts: [...order.parts, newPart] } : order
       )
     );
 
@@ -500,6 +697,34 @@ export default function App() {
       qty: 1,
       price: '',
       vendor: settings.vendors[0] || 'AutoZone',
+    });
+  }
+
+  function addDeclinedWork() {
+    if (!selectedOrder) return;
+    if (!declinedForm.description.trim()) {
+      alert('Declined work description is required.');
+      return;
+    }
+
+    const newDeclined = {
+      id: Date.now(),
+      description: declinedForm.description.trim(),
+      estimatedAmount: Number(declinedForm.estimatedAmount || 0),
+      date: new Date().toISOString().slice(0, 10),
+    };
+
+    setOrders((prev) =>
+      prev.map((order) =>
+        order.id === selectedOrder.id
+          ? { ...order, declinedWork: [...(order.declinedWork || []), newDeclined] }
+          : order
+      )
+    );
+
+    setDeclinedForm({
+      description: '',
+      estimatedAmount: '',
     });
   }
 
@@ -527,13 +752,26 @@ export default function App() {
     );
   }
 
-  function updateSelectedOrderField(field, value) {
+  function removeDeclinedWork(itemId) {
     if (!selectedOrder) return;
 
     setOrders((prev) =>
       prev.map((order) =>
-        order.id === selectedOrder.id ? { ...order, [field]: value } : order
+        order.id === selectedOrder.id
+          ? {
+              ...order,
+              declinedWork: (order.declinedWork || []).filter((item) => item.id !== itemId),
+            }
+          : order
       )
+    );
+  }
+
+  function updateSelectedOrderField(field, value) {
+    if (!selectedOrder) return;
+
+    setOrders((prev) =>
+      prev.map((order) => (order.id === selectedOrder.id ? { ...order, [field]: value } : order))
     );
   }
 
@@ -546,11 +784,11 @@ export default function App() {
   function resetDemoData() {
     if (!window.confirm('Reset all local data back to the demo version?')) return;
 
-    localStorage.removeItem('sons_shop_settings_phase2');
-    localStorage.removeItem('sons_phase2_customers');
-    localStorage.removeItem('sons_phase2_vehicles');
-    localStorage.removeItem('sons_phase2_orders');
-    localStorage.removeItem('sons_phase2_selected_order');
+    localStorage.removeItem('sons_shop_settings_phase3');
+    localStorage.removeItem('sons_phase3_customers');
+    localStorage.removeItem('sons_phase3_vehicles');
+    localStorage.removeItem('sons_phase3_orders');
+    localStorage.removeItem('sons_phase3_selected_order');
     window.location.reload();
   }
 
@@ -571,7 +809,7 @@ export default function App() {
         color: '#111827',
       }}
     >
-      <div style={{ maxWidth: 1380, margin: '0 auto', padding: 24 }}>
+      <div style={{ maxWidth: 1480, margin: '0 auto', padding: 24 }}>
         <div
           style={{
             ...cardStyle(),
@@ -583,14 +821,14 @@ export default function App() {
         >
           <h1 style={{ margin: 0, fontSize: 32 }}>{settings.shopName} Shop System</h1>
           <p style={{ margin: '8px 0 0 0', color: '#d1d5db' }}>
-            Phase 2: customers, vehicles, repair orders, and editable labor and parts.
+            Phase 3: editing, declined work, comeback tracking, and tech productivity.
           </p>
         </div>
 
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
             gap: 16,
             marginBottom: 20,
           }}
@@ -615,6 +853,13 @@ export default function App() {
           </div>
 
           <div style={cardStyle()}>
+            <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 700 }}>Comebacks</div>
+            <div style={{ marginTop: 8, fontSize: 30, fontWeight: 800 }}>
+              {dashboard.comebackCount}
+            </div>
+          </div>
+
+          <div style={cardStyle()}>
             <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 700 }}>Visible Ticket Sales</div>
             <div style={{ marginTop: 8, fontSize: 30, fontWeight: 800 }}>
               {money(dashboard.totalSales)}
@@ -633,6 +878,12 @@ export default function App() {
             <button style={tabButtonStyle('newro')} onClick={() => setActiveTab('newro')}>
               New Repair Order
             </button>
+            <button style={tabButtonStyle('productivity')} onClick={() => setActiveTab('productivity')}>
+              Tech Productivity
+            </button>
+            <button style={tabButtonStyle('declined')} onClick={() => setActiveTab('declined')}>
+              Declined Work
+            </button>
             <button style={tabButtonStyle('settings')} onClick={() => setActiveTab('settings')}>
               Settings
             </button>
@@ -646,7 +897,7 @@ export default function App() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'minmax(320px, 430px) 1fr',
+                  gridTemplateColumns: 'minmax(320px, 420px) 1fr',
                   gap: 20,
                   alignItems: 'start',
                 }}
@@ -655,7 +906,7 @@ export default function App() {
                   <div style={cardStyle()}>
                     <h2 style={sectionTitleStyle()}>Repair Orders</h2>
                     <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
-                      Search by RO, customer, vehicle, plate, or complaint.
+                      Search by RO, customer, vehicle, plate, complaint, or comeback notes.
                     </div>
 
                     <input
@@ -665,7 +916,7 @@ export default function App() {
                       onChange={(e) => setSearch(e.target.value)}
                     />
 
-                    <div style={{ marginTop: 14, display: 'grid', gap: 10, maxHeight: 700, overflow: 'auto' }}>
+                    <div style={{ marginTop: 14, display: 'grid', gap: 10, maxHeight: 760, overflow: 'auto' }}>
                       {filteredOrders.map((order) => {
                         const customer = getCustomer(order.customerId);
                         const vehicle = getVehicle(order.vehicleId);
@@ -706,9 +957,11 @@ export default function App() {
                                 {order.status}
                               </span>
                             </div>
+
                             <div style={{ marginTop: 6, fontSize: 14 }}>
                               {customer?.name} • {vehicle?.year} {vehicle?.make} {vehicle?.model}
                             </div>
+
                             <div
                               style={{
                                 marginTop: 6,
@@ -718,6 +971,20 @@ export default function App() {
                             >
                               {order.complaint}
                             </div>
+
+                            {order.isComeback && (
+                              <div style={{ marginTop: 8 }}>
+                                <span
+                                  style={
+                                    active
+                                      ? badgeStyle('#7f1d1d', '#fff')
+                                      : badgeStyle('#fee2e2', '#991b1b')
+                                  }
+                                >
+                                  Comeback
+                                </span>
+                              </div>
+                            )}
                           </button>
                         );
                       })}
@@ -755,6 +1022,10 @@ export default function App() {
                           </div>
                         )}
                       </div>
+
+                      {selectedOrder?.isComeback && (
+                        <span style={badgeStyle('#fee2e2', '#991b1b')}>Comeback RO</span>
+                      )}
                     </div>
 
                     {selectedOrder ? (
@@ -769,7 +1040,11 @@ export default function App() {
                         >
                           <div style={{ ...cardStyle(), padding: 14 }}>
                             <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 700 }}>Complaint</div>
-                            <div style={{ marginTop: 8 }}>{selectedOrder.complaint}</div>
+                            <textarea
+                              style={{ ...inputStyle(), marginTop: 8, minHeight: 90 }}
+                              value={selectedOrder.complaint}
+                              onChange={(e) => updateSelectedOrderField('complaint', e.target.value)}
+                            />
                           </div>
 
                           <div style={{ ...cardStyle(), padding: 14 }}>
@@ -815,6 +1090,46 @@ export default function App() {
                                 </option>
                               ))}
                             </select>
+                          </div>
+                        </div>
+
+                        <div style={{ ...cardStyle(), marginBottom: 18 }}>
+                          <h3 style={{ marginTop: 0 }}>Comeback Tracking</h3>
+                          <div style={{ display: 'grid', gap: 12 }}>
+                            <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14 }}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedOrder.isComeback}
+                                onChange={(e) => updateSelectedOrderField('isComeback', e.target.checked)}
+                              />
+                              Mark this repair order as a comeback
+                            </label>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                              <div>
+                                <label style={labelStyle()}>Original RO</label>
+                                <input
+                                  style={inputStyle()}
+                                  value={selectedOrder.comebackOriginalRo || ''}
+                                  onChange={(e) =>
+                                    updateSelectedOrderField('comebackOriginalRo', e.target.value)
+                                  }
+                                  placeholder="Example: RO-2388"
+                                />
+                              </div>
+
+                              <div>
+                                <label style={labelStyle()}>Comeback Reason</label>
+                                <input
+                                  style={inputStyle()}
+                                  value={selectedOrder.comebackReason || ''}
+                                  onChange={(e) =>
+                                    updateSelectedOrderField('comebackReason', e.target.value)
+                                  }
+                                  placeholder="Why did it return?"
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
 
@@ -1012,13 +1327,79 @@ export default function App() {
                             gap: 20,
                           }}
                         >
-                          <div style={{ ...cardStyle(), padding: 14 }}>
-                            <h3 style={{ marginTop: 0 }}>Notes</h3>
-                            <textarea
-                              style={{ ...inputStyle(), minHeight: 120, resize: 'vertical' }}
-                              value={selectedOrder.notes || ''}
-                              onChange={(e) => updateSelectedOrderField('notes', e.target.value)}
-                            />
+                          <div style={{ display: 'grid', gap: 20 }}>
+                            <div style={{ ...cardStyle(), padding: 14 }}>
+                              <h3 style={{ marginTop: 0 }}>Notes</h3>
+                              <textarea
+                                style={{ ...inputStyle(), minHeight: 120, resize: 'vertical' }}
+                                value={selectedOrder.notes || ''}
+                                onChange={(e) => updateSelectedOrderField('notes', e.target.value)}
+                              />
+                            </div>
+
+                            <div style={{ ...cardStyle(), padding: 14 }}>
+                              <h3 style={{ marginTop: 0 }}>Declined Work</h3>
+                              <div style={{ display: 'grid', gap: 10 }}>
+                                {(selectedOrder.declinedWork || []).map((item) => (
+                                  <div
+                                    key={item.id}
+                                    style={{
+                                      border: '1px solid #e5e7eb',
+                                      borderRadius: 10,
+                                      padding: 12,
+                                      background: '#f8fafc',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                                      <strong>{item.description}</strong>
+                                      <button
+                                        style={buttonStyle('secondary')}
+                                        onClick={() => removeDeclinedWork(item.id)}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                    <div style={{ color: '#6b7280', marginTop: 6, fontSize: 14 }}>
+                                      {item.date} • {money(item.estimatedAmount)}
+                                    </div>
+                                  </div>
+                                ))}
+
+                                <div style={{ marginTop: 6 }}>
+                                  <label style={labelStyle()}>Declined Work Description</label>
+                                  <input
+                                    style={inputStyle()}
+                                    value={declinedForm.description}
+                                    onChange={(e) =>
+                                      setDeclinedForm((prev) => ({
+                                        ...prev,
+                                        description: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+
+                                <div>
+                                  <label style={labelStyle()}>Estimated Amount</label>
+                                  <input
+                                    style={inputStyle()}
+                                    type="number"
+                                    step="0.01"
+                                    value={declinedForm.estimatedAmount}
+                                    onChange={(e) =>
+                                      setDeclinedForm((prev) => ({
+                                        ...prev,
+                                        estimatedAmount: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+
+                                <button style={buttonStyle('primary')} onClick={addDeclinedWork}>
+                                  Add Declined Work
+                                </button>
+                              </div>
+                            </div>
                           </div>
 
                           <div style={{ ...cardStyle(), padding: 14 }}>
@@ -1055,7 +1436,7 @@ export default function App() {
                               <button style={buttonStyle('primary')} onClick={() => window.print()}>
                                 Print Invoice
                               </button>
-                              <button style={buttonStyle('secondary')} onClick={markPaid}>
+                              <button style={buttonStyle('success')} onClick={markPaid}>
                                 Mark Paid
                               </button>
                             </div>
@@ -1074,7 +1455,9 @@ export default function App() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                 <div style={{ display: 'grid', gap: 20 }}>
                   <div style={cardStyle()}>
-                    <h2 style={sectionTitleStyle()}>Add Customer</h2>
+                    <h2 style={sectionTitleStyle()}>
+                      {editingCustomerId ? 'Edit Customer' : 'Add Customer'}
+                    </h2>
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div>
                         <label style={labelStyle()}>Name</label>
@@ -1106,14 +1489,30 @@ export default function App() {
                           }
                         />
                       </div>
-                      <button style={buttonStyle('primary')} onClick={createCustomer}>
-                        Save Customer
-                      </button>
+
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        {editingCustomerId ? (
+                          <>
+                            <button style={buttonStyle('primary')} onClick={saveCustomerEdit}>
+                              Save Customer
+                            </button>
+                            <button style={buttonStyle('secondary')} onClick={cancelCustomerEdit}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button style={buttonStyle('primary')} onClick={createCustomer}>
+                            Save Customer
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   <div style={cardStyle()}>
-                    <h2 style={sectionTitleStyle()}>Add Vehicle</h2>
+                    <h2 style={sectionTitleStyle()}>
+                      {editingVehicleId ? 'Edit Vehicle' : 'Add Vehicle'}
+                    </h2>
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div>
                         <label style={labelStyle()}>Customer</label>
@@ -1200,16 +1599,29 @@ export default function App() {
                         </div>
                       </div>
 
-                      <button style={buttonStyle('primary')} onClick={createVehicle}>
-                        Save Vehicle
-                      </button>
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        {editingVehicleId ? (
+                          <>
+                            <button style={buttonStyle('primary')} onClick={saveVehicleEdit}>
+                              Save Vehicle
+                            </button>
+                            <button style={buttonStyle('secondary')} onClick={cancelVehicleEdit}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button style={buttonStyle('primary')} onClick={createVehicle}>
+                            Save Vehicle
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div style={cardStyle()}>
                   <h2 style={sectionTitleStyle()}>Customer & Vehicle List</h2>
-                  <div style={{ display: 'grid', gap: 12, maxHeight: 820, overflow: 'auto' }}>
+                  <div style={{ display: 'grid', gap: 12, maxHeight: 900, overflow: 'auto' }}>
                     {customers.map((customer) => {
                       const linkedVehicles = vehicles.filter((vehicle) => vehicle.customerId === customer.id);
                       return (
@@ -1222,9 +1634,26 @@ export default function App() {
                             background: '#fff',
                           }}
                         >
-                          <div style={{ fontWeight: 800 }}>{customer.name}</div>
-                          <div style={{ marginTop: 4, color: '#6b7280', fontSize: 14 }}>
-                            {customer.phone} {customer.email ? `• ${customer.email}` : ''}
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              gap: 12,
+                              alignItems: 'start',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 800 }}>{customer.name}</div>
+                              <div style={{ marginTop: 4, color: '#6b7280', fontSize: 14 }}>
+                                {customer.phone} {customer.email ? `• ${customer.email}` : ''}
+                              </div>
+                            </div>
+                            <button
+                              style={buttonStyle('secondary')}
+                              onClick={() => startEditCustomer(customer)}
+                            >
+                              Edit Customer
+                            </button>
                           </div>
 
                           <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
@@ -1240,9 +1669,24 @@ export default function App() {
                                     fontSize: 14,
                                   }}
                                 >
-                                  <strong>
-                                    {vehicle.year} {vehicle.make} {vehicle.model}
-                                  </strong>
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      gap: 12,
+                                      alignItems: 'start',
+                                    }}
+                                  >
+                                    <strong>
+                                      {vehicle.year} {vehicle.make} {vehicle.model}
+                                    </strong>
+                                    <button
+                                      style={buttonStyle('secondary')}
+                                      onClick={() => startEditVehicle(vehicle)}
+                                    >
+                                      Edit Vehicle
+                                    </button>
+                                  </div>
                                   <div style={{ color: '#6b7280', marginTop: 4 }}>
                                     VIN: {vehicle.vin || '—'} • Plate: {vehicle.plate || '—'} • Mileage:{' '}
                                     {vehicle.mileage || 0}
@@ -1262,7 +1706,7 @@ export default function App() {
             )}
 
             {activeTab === 'newro' && (
-              <div style={{ ...cardStyle(), maxWidth: 900 }}>
+              <div style={{ ...cardStyle(), maxWidth: 950 }}>
                 <h2 style={sectionTitleStyle()}>Create Repair Order</h2>
                 <div style={{ display: 'grid', gap: 14 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1361,6 +1805,44 @@ export default function App() {
                     </div>
                   </div>
 
+                  <div style={{ ...cardStyle(), background: '#f8fafc' }}>
+                    <h3 style={{ marginTop: 0 }}>Comeback Setup</h3>
+                    <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14 }}>
+                      <input
+                        type="checkbox"
+                        checked={roForm.isComeback}
+                        onChange={(e) => setRoForm((prev) => ({ ...prev, isComeback: e.target.checked }))}
+                      />
+                      This repair order is a comeback
+                    </label>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                      <div>
+                        <label style={labelStyle()}>Original RO</label>
+                        <input
+                          style={inputStyle()}
+                          value={roForm.comebackOriginalRo}
+                          onChange={(e) =>
+                            setRoForm((prev) => ({ ...prev, comebackOriginalRo: e.target.value }))
+                          }
+                          placeholder="Example: RO-2388"
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle()}>Comeback Reason</label>
+                        <input
+                          style={inputStyle()}
+                          value={roForm.comebackReason}
+                          onChange={(e) =>
+                            setRoForm((prev) => ({ ...prev, comebackReason: e.target.value }))
+                          }
+                          placeholder="Reason for return"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{ display: 'flex', gap: 12 }}>
                     <button style={buttonStyle('primary')} onClick={createRepairOrder}>
                       Create Repair Order
@@ -1375,6 +1857,9 @@ export default function App() {
                           advisor: settings.advisors[0] || 'Johnny',
                           tech: settings.techs[0] || 'Johnny',
                           status: settings.statuses[0] || 'Waiting for Diagnosis',
+                          isComeback: false,
+                          comebackReason: '',
+                          comebackOriginalRo: '',
                         })
                       }
                     >
@@ -1385,8 +1870,79 @@ export default function App() {
               </div>
             )}
 
+            {activeTab === 'productivity' && (
+              <div style={{ display: 'grid', gap: 20 }}>
+                <div style={cardStyle()}>
+                  <h2 style={sectionTitleStyle()}>Technician Productivity</h2>
+                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                    Flag-hour view based on the current local repair order data.
+                  </div>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
+                          <th style={{ padding: '10px 8px' }}>Tech</th>
+                          <th style={{ padding: '10px 8px' }}>ROs</th>
+                          <th style={{ padding: '10px 8px' }}>Flagged Hours</th>
+                          <th style={{ padding: '10px 8px' }}>Sales</th>
+                          <th style={{ padding: '10px 8px' }}>Comebacks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {productivityRows.map((row) => (
+                          <tr key={row.tech} style={{ borderBottom: '1px solid #eef2f7' }}>
+                            <td style={{ padding: '10px 8px', fontWeight: 700 }}>{row.tech}</td>
+                            <td style={{ padding: '10px 8px' }}>{row.roCount}</td>
+                            <td style={{ padding: '10px 8px' }}>{row.flaggedHours.toFixed(1)}</td>
+                            <td style={{ padding: '10px 8px' }}>{money(row.sales)}</td>
+                            <td style={{ padding: '10px 8px' }}>{row.comebackCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'declined' && (
+              <div style={{ ...cardStyle() }}>
+                <h2 style={sectionTitleStyle()}>Declined Work History</h2>
+                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                  All declined recommendations currently stored in the app.
+                </div>
+
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {allDeclinedWork.length ? (
+                    allDeclinedWork.map((item) => (
+                      <div
+                        key={`${item.ro}-${item.id}`}
+                        style={{
+                          border: '1px solid #e5e7eb',
+                          borderRadius: 12,
+                          padding: 14,
+                          background: '#fff',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                          <strong>{item.description}</strong>
+                          <span style={badgeStyle('#fef3c7', '#92400e')}>{item.ro}</span>
+                        </div>
+                        <div style={{ color: '#6b7280', marginTop: 8, fontSize: 14 }}>
+                          {item.customerName} • {item.vehicleLabel} • {item.date} • {money(item.estimatedAmount)}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: '#6b7280' }}>No declined work saved yet.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {activeTab === 'settings' && (
-              <div style={{ ...cardStyle(), maxWidth: 900 }}>
+              <div style={{ ...cardStyle(), maxWidth: 950 }}>
                 <h2 style={sectionTitleStyle()}>Settings</h2>
                 <div style={{ display: 'grid', gap: 14 }}>
                   <div>
@@ -1394,9 +1950,7 @@ export default function App() {
                     <input
                       style={inputStyle()}
                       value={settings.shopName}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, shopName: e.target.value }))
-                      }
+                      onChange={(e) => setSettings((prev) => ({ ...prev, shopName: e.target.value }))}
                     />
                   </div>
 
@@ -1483,6 +2037,21 @@ export default function App() {
                   </div>
                   <div style={{ fontSize: 14, color: '#6b7280' }}>
                     Statuses: {settings.statuses.join(' • ')}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 14,
+                      borderRadius: 12,
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      color: '#1e3a8a',
+                      fontSize: 14,
+                    }}
+                  >
+                    Next step is moving this local data into Supabase so your shop data is saved online
+                    instead of only in this browser.
                   </div>
                 </div>
               </div>
