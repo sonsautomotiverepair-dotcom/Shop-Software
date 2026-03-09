@@ -1,0 +1,812 @@
+import React, { useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Car, ClipboardList, DollarSign, Search, ShoppingCart, User, Wrench, Plus, FileText, Receipt, Package, Clock3 } from 'lucide-react';
+import { motion } from 'framer-motion';
+
+const initialCustomers = [
+  { id: 1, name: 'James Walker', phone: '918-555-1021', email: 'jwalker@email.com', vehicles: [1] },
+  { id: 2, name: 'Sarah Davis', phone: '918-555-2201', email: 'sdavis@email.com', vehicles: [2] },
+  { id: 3, name: 'Mike Turner', phone: '918-555-1887', email: 'mturner@email.com', vehicles: [3] },
+];
+
+const initialVehicles = [
+  { id: 1, customerId: 1, year: 2015, make: 'Ford', model: 'F-150', vin: '1FTFW1EF7FKD10001', plate: 'OKM-112', mileage: 148230 },
+  { id: 2, customerId: 2, year: 2018, make: 'Toyota', model: 'Camry', vin: '4T1B11HK8JU20002', plate: 'TUL-883', mileage: 103552 },
+  { id: 3, customerId: 3, year: 2014, make: 'Chevrolet', model: 'Silverado 1500', vin: '3GCUKREC1EG30003', plate: 'SON-247', mileage: 182019 },
+];
+
+const initialOrders = [
+  {
+    id: 1001,
+    ro: 'RO-2401',
+    customerId: 1,
+    vehicleId: 1,
+    status: 'In Progress',
+    advisor: 'Johnny',
+    tech: 'Cody',
+    complaint: 'Check engine light and rough idle',
+    labor: [
+      { id: 1, description: 'Diagnostic inspection', hours: 1, rate: 125 },
+      { id: 2, description: 'Replace ignition coil', hours: 0.8, rate: 125 },
+    ],
+    parts: [
+      { id: 1, partNumber: 'DG549', description: 'Ignition Coil', qty: 1, price: 74.99, vendor: 'AutoZone' },
+      { id: 2, partNumber: 'SP530', description: 'Spark Plug', qty: 6, price: 8.5, vendor: 'OReilly' },
+    ],
+    notes: 'Customer approved up to $650. Needs done by tomorrow afternoon.',
+    createdAt: '2026-03-08',
+    invoicePaid: false,
+  },
+  {
+    id: 1002,
+    ro: 'RO-2402',
+    customerId: 2,
+    vehicleId: 2,
+    status: 'Awaiting Approval',
+    advisor: 'Johnny',
+    tech: 'Luis',
+    complaint: 'Front brakes grinding',
+    labor: [
+      { id: 1, description: 'Front brake pad and rotor replacement', hours: 1.5, rate: 120 },
+    ],
+    parts: [
+      { id: 1, partNumber: 'PAD-881', description: 'Front Brake Pads', qty: 1, price: 69.99, vendor: 'NAPA' },
+      { id: 2, partNumber: 'ROT-430', description: 'Front Rotors', qty: 2, price: 55, vendor: 'NAPA' },
+    ],
+    notes: 'Sent estimate by text. Waiting on customer approval.',
+    createdAt: '2026-03-08',
+    invoicePaid: false,
+  },
+  {
+    id: 1003,
+    ro: 'RO-2403',
+    customerId: 3,
+    vehicleId: 3,
+    status: 'Ready For Pickup',
+    advisor: 'Johnny',
+    tech: 'Cody',
+    complaint: 'Oil leak and charging issue',
+    labor: [
+      { id: 1, description: 'Replace valve cover gaskets', hours: 2.1, rate: 125 },
+      { id: 2, description: 'Replace alternator', hours: 1.2, rate: 125 },
+    ],
+    parts: [
+      { id: 1, partNumber: 'VCG-22', description: 'Valve Cover Gasket Set', qty: 1, price: 48.99, vendor: 'Advance' },
+      { id: 2, partNumber: 'ALT-7112', description: 'Alternator', qty: 1, price: 219.99, vendor: 'Carquest' },
+    ],
+    notes: 'Truck is done. Test drove fine. Customer called.',
+    createdAt: '2026-03-07',
+    invoicePaid: false,
+  },
+];
+
+const currency = (n) => `$${n.toFixed(2)}`;
+
+function calcLaborTotal(labor) {
+  return labor.reduce((sum, item) => sum + item.hours * item.rate, 0);
+}
+
+function calcPartsTotal(parts) {
+  return parts.reduce((sum, item) => sum + item.qty * item.price, 0);
+}
+
+function calcGrandTotal(order) {
+  return calcLaborTotal(order.labor) + calcPartsTotal(order.parts);
+}
+
+function StatCard({ icon: Icon, title, value, sub }) {
+  return (
+    <Card className="rounded-2xl shadow-sm border-slate-200">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm text-slate-500">{title}</p>
+            <p className="text-2xl font-semibold mt-1">{value}</p>
+            <p className="text-xs text-slate-500 mt-1">{sub}</p>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-100">
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function VehicleLabel({ vehicle }) {
+  return <span>{vehicle.year} {vehicle.make} {vehicle.model}</span>;
+}
+
+export default function ShopManagementMVP() {
+  const defaultSettings = {
+    shopName: 'Sons Auto Repair',
+    systemName: 'Sons Auto Repair Shop System',
+    laborRate: 126,
+    techCount: 4,
+    payStructure: 'Flag Hours',
+    estimateDelivery: 'Both',
+    statuses: [
+      'Waiting for Diagnosis',
+      'Waiting on Parts',
+      'Waiting for Approval',
+      'In Progress',
+      'Ready For Pickup',
+      'Closed',
+    ],
+    vendors: ['AutoZone', 'O’Reilly’s', 'RockAuto'],
+    shopSuppliesEnabled: true,
+    shopSuppliesPercent: 8,
+    taxEnabled: true,
+    taxPercent: 0,
+    productivityTracking: true,
+    techs: ['Johnny', 'Cody', 'Luis', 'Tyler'],
+    advisors: ['Johnny'],
+  };
+
+  const [settings, setSettings] = useState(defaultSettings);
+  const [customers, setCustomers] = useState(initialCustomers);
+  const [vehicles, setVehicles] = useState(initialVehicles);
+  const [orders, setOrders] = useState(initialOrders);
+  const [search, setSearch] = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState(initialOrders[0].id);
+  const [newVendor, setNewVendor] = useState('');
+  const [newStatus, setNewStatus] = useState('');
+  const [newTech, setNewTech] = useState('');
+  const [newAdvisor, setNewAdvisor] = useState('');
+  const [newPart, setNewPart] = useState({ partNumber: '', description: '', qty: 1, price: 0, vendor: 'AutoZone' });
+  const [newLabor, setNewLabor] = useState({ description: '', hours: 1, rate: defaultSettings.laborRate });
+  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '' });
+  const [newVehicle, setNewVehicle] = useState({ customerId: '', year: '', make: '', model: '', vin: '', plate: '', mileage: '' });
+  const [newRO, setNewRO] = useState({ customerId: '', vehicleId: '', complaint: '', advisor: 'Johnny', tech: 'Cody' });
+
+  const selectedOrder = useMemo(() => orders.find((o) => o.id === selectedOrderId) || orders[0], [orders, selectedOrderId]);
+
+  const filteredOrders = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return orders;
+    return orders.filter((order) => {
+      const customer = customers.find((c) => c.id === order.customerId);
+      const vehicle = vehicles.find((v) => v.id === order.vehicleId);
+      const haystack = [order.ro, order.status, order.complaint, customer?.name, vehicle?.make, vehicle?.model, vehicle?.plate, vehicle?.vin].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [orders, customers, vehicles, search]);
+
+  const calcShopSupplies = (order) => settings.shopSuppliesEnabled ? calcGrandTotal(order) * (Number(settings.shopSuppliesPercent || 0) / 100) : 0;
+  const calcTax = (order) => settings.taxEnabled ? (calcGrandTotal(order) + calcShopSupplies(order)) * (Number(settings.taxPercent || 0) / 100) : 0;
+  const calcInvoiceTotal = (order) => calcGrandTotal(order) + calcShopSupplies(order) + calcTax(order);
+
+  const kpis = useMemo(() => {
+    const open = orders.filter((o) => o.status !== 'Ready For Pickup' && o.status !== 'Closed').length;
+    const ready = orders.filter((o) => o.status === 'Ready For Pickup').length;
+    const sales = orders.reduce((sum, o) => sum + calcInvoiceTotal(o), 0);
+    const awaiting = orders.filter((o) => o.status === 'Waiting for Approval' || o.status === 'Awaiting Approval').length;
+    return { open, ready, sales, awaiting };
+  }, [orders, settings]);
+
+  const productivity = useMemo(() => {
+    return settings.techs.map((tech) => {
+      const techOrders = orders.filter((o) => o.tech === tech);
+      const flaggedHours = techOrders.reduce((sum, order) => sum + order.labor.reduce((laborSum, line) => laborSum + Number(line.hours || 0), 0), 0);
+      const sales = techOrders.reduce((sum, order) => sum + calcInvoiceTotal(order), 0);
+      return { tech, ros: techOrders.length, flaggedHours, sales };
+    });
+  }, [orders, settings]);
+
+  const getCustomer = (id) => customers.find((c) => c.id === id);
+  const getVehicle = (id) => vehicles.find((v) => v.id === id);
+
+  const addPartToOrder = () => {
+    if (!selectedOrder || !newPart.description) return;
+    setOrders((prev) => prev.map((order) => order.id === selectedOrder.id ? {
+      ...order,
+      parts: [...order.parts, { id: Date.now(), partNumber: newPart.partNumber || 'CUSTOM', description: newPart.description, qty: Number(newPart.qty), price: Number(newPart.price), vendor: newPart.vendor }],
+    } : order));
+    setNewPart({ partNumber: '', description: '', qty: 1, price: 0, vendor: settings.vendors[0] || 'AutoZone' });
+  };
+
+  const addLaborToOrder = () => {
+    if (!selectedOrder || !newLabor.description) return;
+    setOrders((prev) => prev.map((order) => order.id === selectedOrder.id ? {
+      ...order,
+      labor: [...order.labor, { id: Date.now(), description: newLabor.description, hours: Number(newLabor.hours), rate: Number(newLabor.rate) }],
+    } : order));
+    setNewLabor({ description: '', hours: 1, rate: Number(settings.laborRate) || 126 });
+  };
+
+  const updateOrderStatus = (status) => {
+    if (!selectedOrder) return;
+    setOrders((prev) => prev.map((order) => (order.id === selectedOrder.id ? { ...order, status } : order)));
+  };
+
+  const closeAndPayInvoice = () => {
+    if (!selectedOrder) return;
+    setOrders((prev) => prev.map((order) => (order.id === selectedOrder.id ? { ...order, status: 'Closed', invoicePaid: true } : order)));
+  };
+
+  const createCustomer = () => {
+    if (!newCustomer.name) return;
+    const customer = { id: Date.now(), ...newCustomer, vehicles: [] };
+    setCustomers((prev) => [customer, ...prev]);
+    setNewCustomer({ name: '', phone: '', email: '' });
+  };
+
+  const createVehicle = () => {
+    if (!newVehicle.customerId || !newVehicle.make || !newVehicle.model) return;
+    const vehicle = { id: Date.now(), customerId: Number(newVehicle.customerId), year: Number(newVehicle.year) || new Date().getFullYear(), make: newVehicle.make, model: newVehicle.model, vin: newVehicle.vin, plate: newVehicle.plate, mileage: Number(newVehicle.mileage) || 0 };
+    setVehicles((prev) => [vehicle, ...prev]);
+    setCustomers((prev) => prev.map((c) => (c.id === vehicle.customerId ? { ...c, vehicles: [...c.vehicles, vehicle.id] } : c)));
+    setNewVehicle({ customerId: '', year: '', make: '', model: '', vin: '', plate: '', mileage: '' });
+  };
+
+  const createRepairOrder = () => {
+    if (!newRO.customerId || !newRO.vehicleId || !newRO.complaint) return;
+    const order = {
+      id: Date.now(),
+      ro: `RO-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      customerId: Number(newRO.customerId),
+      vehicleId: Number(newRO.vehicleId),
+      status: settings.statuses[0] || 'Waiting for Diagnosis',
+      advisor: newRO.advisor,
+      tech: newRO.tech,
+      complaint: newRO.complaint,
+      labor: [],
+      parts: [],
+      notes: '',
+      createdAt: '2026-03-08',
+      invoicePaid: false,
+    };
+    setOrders((prev) => [order, ...prev]);
+    setSelectedOrderId(order.id);
+    setNewRO({ customerId: '', vehicleId: '', complaint: '', advisor: settings.advisors[0] || 'Johnny', tech: settings.techs[0] || 'Cody' });
+  };
+
+  const addListItem = (key, value, setter) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setSettings((prev) => ({ ...prev, [key]: [...prev[key], trimmed] }));
+    setter('');
+  };
+
+  const removeListItem = (key, item) => {
+    setSettings((prev) => ({ ...prev, [key]: prev[key].filter((entry) => entry !== item) }));
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{settings.systemName}</h1>
+              <p className="text-slate-600 mt-1">Editable shop settings built in. You can change labor rate, vendors, statuses, techs, estimate delivery, shop supplies, and productivity rules inside the software.</p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button className="rounded-2xl"><Plus className="h-4 w-4 mr-2" />New Repair Order</Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-xl rounded-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Create Repair Order</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
+                    <div>
+                      <Label>Customer</Label>
+                      <Select value={String(newRO.customerId)} onValueChange={(v) => setNewRO((s) => ({ ...s, customerId: v, vehicleId: '' }))}>
+                        <SelectTrigger><SelectValue placeholder="Choose customer" /></SelectTrigger>
+                        <SelectContent>
+                          {customers.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Vehicle</Label>
+                      <Select value={String(newRO.vehicleId)} onValueChange={(v) => setNewRO((s) => ({ ...s, vehicleId: v }))}>
+                        <SelectTrigger><SelectValue placeholder="Choose vehicle" /></SelectTrigger>
+                        <SelectContent>
+                          {vehicles.filter((v) => !newRO.customerId || v.customerId === Number(newRO.customerId)).map((v) => (
+                            <SelectItem key={v.id} value={String(v.id)}>{v.year} {v.make} {v.model}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Advisor</Label>
+                      <Select value={newRO.advisor} onValueChange={(v) => setNewRO((s) => ({ ...s, advisor: v }))}>
+                        <SelectTrigger><SelectValue placeholder="Choose advisor" /></SelectTrigger>
+                        <SelectContent>
+                          {settings.advisors.map((advisor) => <SelectItem key={advisor} value={advisor}>{advisor}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Technician</Label>
+                      <Select value={newRO.tech} onValueChange={(v) => setNewRO((s) => ({ ...s, tech: v }))}>
+                        <SelectTrigger><SelectValue placeholder="Choose tech" /></SelectTrigger>
+                        <SelectContent>
+                          {settings.techs.map((tech) => <SelectItem key={tech} value={tech}>{tech}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Customer Complaint</Label>
+                      <Textarea value={newRO.complaint} onChange={(e) => setNewRO((s) => ({ ...s, complaint: e.target.value }))} placeholder="What did the customer bring it in for?" />
+                    </div>
+                  </div>
+                  <Button onClick={createRepairOrder} className="w-full rounded-2xl">Create RO</Button>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <StatCard icon={ClipboardList} title="Open Repair Orders" value={kpis.open} sub="Vehicles currently in workflow" />
+          <StatCard icon={Clock3} title="Waiting for Approval" value={kpis.awaiting} sub="Pending customer decisions" />
+          <StatCard icon={Package} title="Ready For Pickup" value={kpis.ready} sub="Finished and ready to close" />
+          <StatCard icon={DollarSign} title="Gross Sales" value={currency(kpis.sales)} sub="Includes editable shop supplies and tax rules" />
+        </div>
+
+        <Tabs defaultValue="dashboard" className="space-y-4">
+          <TabsList className="grid grid-cols-2 md:grid-cols-6 rounded-2xl h-auto p-1">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="repair-orders">Repair Orders</TabsTrigger>
+            <TabsTrigger value="invoicing">Invoicing</TabsTrigger>
+            <TabsTrigger value="parts">Parts</TabsTrigger>
+            <TabsTrigger value="crm">CRM</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="dashboard">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <Card className="xl:col-span-2 rounded-2xl shadow-sm">
+                <CardHeader>
+                  <CardTitle>Today’s Workflow</CardTitle>
+                  <CardDescription>See what is moving through the shop right now.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>RO</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Vehicle</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {orders.map((order) => {
+                        const customer = getCustomer(order.customerId);
+                        const vehicle = getVehicle(order.vehicleId);
+                        return (
+                          <TableRow key={order.id} className="cursor-pointer" onClick={() => setSelectedOrderId(order.id)}>
+                            <TableCell className="font-medium">{order.ro}</TableCell>
+                            <TableCell>{customer?.name}</TableCell>
+                            <TableCell>{vehicle?.year} {vehicle?.make} {vehicle?.model}</TableCell>
+                            <TableCell><Badge variant="secondary" className="rounded-xl">{order.status}</Badge></TableCell>
+                            <TableCell>{currency(calcInvoiceTotal(order))}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader>
+                  <CardTitle>Quick Actions</CardTitle>
+                  <CardDescription>{settings.techCount} techs • {settings.payStructure} • ${settings.laborRate}/hr</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {settings.statuses.slice(0, 4).map((status) => (
+                    <Button key={status} variant="outline" className="w-full justify-start rounded-2xl" onClick={() => updateOrderStatus(status)}>{status}</Button>
+                  ))}
+                  <Button variant="outline" className="w-full justify-start rounded-2xl" onClick={() => updateOrderStatus('Ready For Pickup')}><Receipt className="h-4 w-4 mr-2" />Mark Ready For Pickup</Button>
+                  <Button className="w-full justify-start rounded-2xl" onClick={closeAndPayInvoice}><DollarSign className="h-4 w-4 mr-2" />Close & Mark Paid</Button>
+                </CardContent>
+              </Card>
+            </div>
+
+            {settings.productivityTracking && (
+              <Card className="rounded-2xl shadow-sm mt-4">
+                <CardHeader>
+                  <CardTitle>Technician Productivity</CardTitle>
+                  <CardDescription>Flag-hour performance snapshot for your current tech list.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tech</TableHead>
+                        <TableHead>ROs</TableHead>
+                        <TableHead>Flagged Hours</TableHead>
+                        <TableHead>Sales</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {productivity.map((row) => (
+                        <TableRow key={row.tech}>
+                          <TableCell>{row.tech}</TableCell>
+                          <TableCell>{row.ros}</TableCell>
+                          <TableCell>{row.flaggedHours}</TableCell>
+                          <TableCell>{currency(row.sales)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="repair-orders">
+            <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-4">
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader>
+                  <CardTitle>Repair Orders</CardTitle>
+                  <CardDescription>Search by RO, customer, vehicle, VIN, or plate.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="relative">
+                    <Search className="h-4 w-4 absolute left-3 top-3 text-slate-400" />
+                    <Input className="pl-9 rounded-2xl" placeholder="Search repair orders" value={search} onChange={(e) => setSearch(e.target.value)} />
+                  </div>
+                  <div className="space-y-2 max-h-[580px] overflow-auto pr-1">
+                    {filteredOrders.map((order) => {
+                      const customer = getCustomer(order.customerId);
+                      const vehicle = getVehicle(order.vehicleId);
+                      return (
+                        <button key={order.id} onClick={() => setSelectedOrderId(order.id)} className={`w-full text-left p-4 rounded-2xl border transition ${selectedOrderId === order.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white hover:bg-slate-50 border-slate-200'}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="font-semibold">{order.ro}</div>
+                              <div className={`text-sm ${selectedOrderId === order.id ? 'text-slate-300' : 'text-slate-500'}`}>{customer?.name}</div>
+                            </div>
+                            <Badge variant={selectedOrderId === order.id ? 'outline' : 'secondary'} className="rounded-xl">{order.status}</Badge>
+                          </div>
+                          <div className={`text-sm mt-2 ${selectedOrderId === order.id ? 'text-slate-300' : 'text-slate-600'}`}>{vehicle?.year} {vehicle?.make} {vehicle?.model}</div>
+                          <div className={`text-sm mt-1 ${selectedOrderId === order.id ? 'text-slate-300' : 'text-slate-500'}`}>{order.complaint}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {selectedOrder && (
+                <Card className="rounded-2xl shadow-sm">
+                  <CardHeader>
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <CardTitle>{selectedOrder.ro}</CardTitle>
+                        <CardDescription>{getCustomer(selectedOrder.customerId)?.name} • {getVehicle(selectedOrder.vehicleId)?.year} {getVehicle(selectedOrder.vehicleId)?.make} {getVehicle(selectedOrder.vehicleId)?.model}</CardDescription>
+                      </div>
+                      <Select value={selectedOrder.status} onValueChange={(value) => updateOrderStatus(value)}>
+                        <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {settings.statuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <Card className="rounded-2xl border-slate-200"><CardContent className="p-4 space-y-2"><p className="text-sm text-slate-500">Complaint</p><p className="font-medium">{selectedOrder.complaint}</p></CardContent></Card>
+                      <Card className="rounded-2xl border-slate-200"><CardContent className="p-4 space-y-2"><p className="text-sm text-slate-500">Advisor / Tech</p><p className="font-medium">{selectedOrder.advisor} / {selectedOrder.tech}</p></CardContent></Card>
+                      <Card className="rounded-2xl border-slate-200"><CardContent className="p-4 space-y-2"><p className="text-sm text-slate-500">Vehicle</p><p className="font-medium">{getVehicle(selectedOrder.vehicleId)?.vin}</p></CardContent></Card>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between"><h3 className="font-semibold text-lg">Labor Lines</h3><Badge variant="secondary" className="rounded-xl">{currency(calcLaborTotal(selectedOrder.labor))}</Badge></div>
+                        <Table>
+                          <TableHeader><TableRow><TableHead>Description</TableHead><TableHead>Hours</TableHead><TableHead>Rate</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
+                          <TableBody>
+                            {selectedOrder.labor.map((item) => (
+                              <TableRow key={item.id}><TableCell>{item.description}</TableCell><TableCell>{item.hours}</TableCell><TableCell>{currency(item.rate)}</TableCell><TableCell>{currency(item.hours * item.rate)}</TableCell></TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                        <div className="rounded-2xl border p-4 space-y-3 bg-slate-50">
+                          <div className="font-medium">Add Labor</div>
+                          <Input placeholder="Description" value={newLabor.description} onChange={(e) => setNewLabor((s) => ({ ...s, description: e.target.value }))} />
+                          <div className="grid grid-cols-2 gap-3">
+                            <Input type="number" placeholder="Hours" value={newLabor.hours} onChange={(e) => setNewLabor((s) => ({ ...s, hours: e.target.value }))} />
+                            <Input type="number" placeholder="Rate" value={newLabor.rate} onChange={(e) => setNewLabor((s) => ({ ...s, rate: e.target.value }))} />
+                          </div>
+                          <Button onClick={addLaborToOrder} className="rounded-2xl w-full">Add Labor Line</Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between"><h3 className="font-semibold text-lg">Parts Lines</h3><Badge variant="secondary" className="rounded-xl">{currency(calcPartsTotal(selectedOrder.parts))}</Badge></div>
+                        <Table>
+                          <TableHeader><TableRow><TableHead>Part</TableHead><TableHead>Qty</TableHead><TableHead>Price</TableHead><TableHead>Vendor</TableHead></TableRow></TableHeader>
+                          <TableBody>
+                            {selectedOrder.parts.map((item) => (
+                              <TableRow key={item.id}><TableCell><div className="font-medium">{item.description}</div><div className="text-xs text-slate-500">{item.partNumber}</div></TableCell><TableCell>{item.qty}</TableCell><TableCell>{currency(item.price)}</TableCell><TableCell>{item.vendor}</TableCell></TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                        <div className="rounded-2xl border p-4 space-y-3 bg-slate-50">
+                          <div className="font-medium">Add / Order Part</div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <Input placeholder="Part #" value={newPart.partNumber} onChange={(e) => setNewPart((s) => ({ ...s, partNumber: e.target.value }))} />
+                            <Select value={newPart.vendor} onValueChange={(value) => setNewPart((s) => ({ ...s, vendor: value }))}>
+                              <SelectTrigger><SelectValue placeholder="Vendor" /></SelectTrigger>
+                              <SelectContent>
+                                {settings.vendors.map((vendor) => <SelectItem key={vendor} value={vendor}>{vendor}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Input placeholder="Description" value={newPart.description} onChange={(e) => setNewPart((s) => ({ ...s, description: e.target.value }))} />
+                          <div className="grid grid-cols-2 gap-3">
+                            <Input type="number" placeholder="Qty" value={newPart.qty} onChange={(e) => setNewPart((s) => ({ ...s, qty: e.target.value }))} />
+                            <Input type="number" placeholder="Unit Price" value={newPart.price} onChange={(e) => setNewPart((s) => ({ ...s, price: e.target.value }))} />
+                          </div>
+                          <Button onClick={addPartToOrder} className="rounded-2xl w-full">Add Part To Ticket</Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border p-4 bg-slate-50">
+                      <div className="font-medium mb-2">Notes</div>
+                      <Textarea value={selectedOrder.notes} onChange={(e) => setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id ? { ...o, notes: e.target.value } : o)))} className="min-h-[100px]" />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="invoicing">
+            {selectedOrder && (
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader>
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div>
+                      <CardTitle>Invoice Preview</CardTitle>
+                      <CardDescription>{selectedOrder.ro} • {getCustomer(selectedOrder.customerId)?.name} • estimates by {settings.estimateDelivery.toLowerCase()}</CardDescription>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button variant="outline" className="rounded-2xl" onClick={() => window.print()}>Print Invoice</Button>
+                      <Button className="rounded-2xl" onClick={closeAndPayInvoice}>Mark Paid</Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="font-semibold text-lg">{settings.shopName}</h3>
+                      <p className="text-slate-600">Repair order and invoice summary</p>
+                    </div>
+                    <div className="text-sm text-slate-600 md:text-right">
+                      <p><span className="font-medium text-slate-900">Customer:</span> {getCustomer(selectedOrder.customerId)?.name}</p>
+                      <p><span className="font-medium text-slate-900">Phone:</span> {getCustomer(selectedOrder.customerId)?.phone}</p>
+                      <p><span className="font-medium text-slate-900">Vehicle:</span> {getVehicle(selectedOrder.vehicleId)?.year} {getVehicle(selectedOrder.vehicleId)?.make} {getVehicle(selectedOrder.vehicleId)?.model}</p>
+                      <p><span className="font-medium text-slate-900">RO:</span> {selectedOrder.ro}</p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="font-semibold mb-3">Labor</h4>
+                      <Table>
+                        <TableHeader><TableRow><TableHead>Description</TableHead><TableHead>Hours</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                          {selectedOrder.labor.map((item) => <TableRow key={item.id}><TableCell>{item.description}</TableCell><TableCell>{item.hours}</TableCell><TableCell>{currency(item.hours * item.rate)}</TableCell></TableRow>)}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold mb-3">Parts</h4>
+                      <Table>
+                        <TableHeader><TableRow><TableHead>Description</TableHead><TableHead>Qty</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                          {selectedOrder.parts.map((item) => <TableRow key={item.id}><TableCell>{item.description}</TableCell><TableCell>{item.qty}</TableCell><TableCell>{currency(item.qty * item.price)}</TableCell></TableRow>)}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card className="rounded-2xl border-slate-200">
+                      <CardContent className="p-4 space-y-2 text-sm">
+                        <div className="flex justify-between"><span>Labor Total</span><span>{currency(calcLaborTotal(selectedOrder.labor))}</span></div>
+                        <div className="flex justify-between"><span>Parts Total</span><span>{currency(calcPartsTotal(selectedOrder.parts))}</span></div>
+                        <div className="flex justify-between"><span>Shop Supplies</span><span>{currency(calcShopSupplies(selectedOrder))}</span></div>
+                        <div className="flex justify-between"><span>Tax</span><span>{currency(calcTax(selectedOrder))}</span></div>
+                        <Separator />
+                        <div className="flex justify-between text-lg font-semibold"><span>Total Due</span><span>{currency(calcInvoiceTotal(selectedOrder))}</span></div>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-2xl border-slate-200">
+                      <CardContent className="p-4 space-y-2 text-sm">
+                        <div className="font-semibold">Invoice Notes</div>
+                        <p className="text-slate-600">{selectedOrder.notes || 'No invoice notes added.'}</p>
+                        <div className="pt-2"><Badge className="rounded-xl">{selectedOrder.invoicePaid ? 'Paid' : 'Unpaid'}</Badge></div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="parts">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <Card className="xl:col-span-2 rounded-2xl shadow-sm">
+                <CardHeader>
+                  <CardTitle>Parts Ordering Center</CardTitle>
+                  <CardDescription>Preferred vendors and pricing behavior can be edited in Settings.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader><TableRow><TableHead>RO</TableHead><TableHead>Part #</TableHead><TableHead>Description</TableHead><TableHead>Vendor</TableHead><TableHead>Qty</TableHead><TableHead>Price</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {orders.flatMap((order) => order.parts.map((part) => ({ ...part, ro: order.ro }))).map((part, idx) => (
+                        <TableRow key={`${part.id}-${idx}`}><TableCell>{part.ro}</TableCell><TableCell>{part.partNumber}</TableCell><TableCell>{part.description}</TableCell><TableCell>{part.vendor}</TableCell><TableCell>{part.qty}</TableCell><TableCell>{currency(part.price)}</TableCell></TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader>
+                  <CardTitle>Vendor Integrations</CardTitle>
+                  <CardDescription>Edit the vendor list anytime for your shop.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-slate-600">
+                  {settings.vendors.map((vendor) => (
+                    <div key={vendor} className="p-4 rounded-2xl border bg-slate-50 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-slate-900 flex items-center gap-2"><ShoppingCart className="h-4 w-4" />{vendor}</div>
+                        <p className="mt-1">Available as a preferred supplier for parts entry and future ordering.</p>
+                      </div>
+                      <Button variant="outline" className="rounded-xl" onClick={() => removeListItem('vendors', vendor)}>Remove</Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="crm">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader><CardTitle>Add Customer</CardTitle><CardDescription>Create a new customer profile.</CardDescription></CardHeader>
+                <CardContent className="space-y-3">
+                  <Input placeholder="Customer name" value={newCustomer.name} onChange={(e) => setNewCustomer((s) => ({ ...s, name: e.target.value }))} />
+                  <Input placeholder="Phone" value={newCustomer.phone} onChange={(e) => setNewCustomer((s) => ({ ...s, phone: e.target.value }))} />
+                  <Input placeholder="Email" value={newCustomer.email} onChange={(e) => setNewCustomer((s) => ({ ...s, email: e.target.value }))} />
+                  <Button onClick={createCustomer} className="w-full rounded-2xl">Save Customer</Button>
+                </CardContent>
+              </Card>
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader><CardTitle>Add Vehicle</CardTitle><CardDescription>Attach a vehicle to a customer.</CardDescription></CardHeader>
+                <CardContent className="space-y-3">
+                  <Select value={String(newVehicle.customerId)} onValueChange={(v) => setNewVehicle((s) => ({ ...s, customerId: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Choose customer" /></SelectTrigger>
+                    <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input placeholder="Year" value={newVehicle.year} onChange={(e) => setNewVehicle((s) => ({ ...s, year: e.target.value }))} />
+                    <Input placeholder="Make" value={newVehicle.make} onChange={(e) => setNewVehicle((s) => ({ ...s, make: e.target.value }))} />
+                    <Input placeholder="Model" value={newVehicle.model} onChange={(e) => setNewVehicle((s) => ({ ...s, model: e.target.value }))} />
+                  </div>
+                  <Input placeholder="VIN" value={newVehicle.vin} onChange={(e) => setNewVehicle((s) => ({ ...s, vin: e.target.value }))} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input placeholder="Plate" value={newVehicle.plate} onChange={(e) => setNewVehicle((s) => ({ ...s, plate: e.target.value }))} />
+                    <Input placeholder="Mileage" value={newVehicle.mileage} onChange={(e) => setNewVehicle((s) => ({ ...s, mileage: e.target.value }))} />
+                  </div>
+                  <Button onClick={createVehicle} className="w-full rounded-2xl">Save Vehicle</Button>
+                </CardContent>
+              </Card>
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader><CardTitle>Customer List</CardTitle><CardDescription>Quick CRM view.</CardDescription></CardHeader>
+                <CardContent className="space-y-3 max-h-[500px] overflow-auto">
+                  {customers.map((customer) => {
+                    const customerVehicles = vehicles.filter((v) => v.customerId === customer.id);
+                    return (
+                      <div key={customer.id} className="rounded-2xl border p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-semibold flex items-center gap-2"><User className="h-4 w-4" />{customer.name}</div>
+                            <div className="text-sm text-slate-600 mt-1">{customer.phone}</div>
+                            <div className="text-sm text-slate-500">{customer.email}</div>
+                          </div>
+                          <Badge variant="secondary" className="rounded-xl">{customerVehicles.length} vehicles</Badge>
+                        </div>
+                        <div className="mt-3 space-y-1 text-sm text-slate-700">{customerVehicles.map((v) => <div key={v.id} className="flex items-center gap-2"><Car className="h-4 w-4" /><VehicleLabel vehicle={v} /></div>)}</div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <Card className="xl:col-span-2 rounded-2xl shadow-sm">
+                <CardHeader>
+                  <CardTitle>Shop Settings</CardTitle>
+                  <CardDescription>Edit the operational rules of your shop inside the software.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><Label>Shop Name</Label><Input value={settings.shopName} onChange={(e) => setSettings((s) => ({ ...s, shopName: e.target.value }))} /></div>
+                  <div><Label>System Name</Label><Input value={settings.systemName} onChange={(e) => setSettings((s) => ({ ...s, systemName: e.target.value }))} /></div>
+                  <div><Label>Labor Rate</Label><Input type="number" value={settings.laborRate} onChange={(e) => setSettings((s) => ({ ...s, laborRate: Number(e.target.value) }))} /></div>
+                  <div><Label>Tech Count</Label><Input type="number" value={settings.techCount} onChange={(e) => setSettings((s) => ({ ...s, techCount: Number(e.target.value) }))} /></div>
+                  <div><Label>Pay Structure</Label><Input value={settings.payStructure} onChange={(e) => setSettings((s) => ({ ...s, payStructure: e.target.value }))} /></div>
+                  <div><Label>Estimate Delivery</Label><Select value={settings.estimateDelivery} onValueChange={(value) => setSettings((s) => ({ ...s, estimateDelivery: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Text">Text</SelectItem><SelectItem value="Email">Email</SelectItem><SelectItem value="Both">Both</SelectItem></SelectContent></Select></div>
+                  <div><Label>Shop Supplies %</Label><Input type="number" value={settings.shopSuppliesPercent} onChange={(e) => setSettings((s) => ({ ...s, shopSuppliesPercent: Number(e.target.value) }))} /></div>
+                  <div><Label>Tax %</Label><Input type="number" value={settings.taxPercent} onChange={(e) => setSettings((s) => ({ ...s, taxPercent: Number(e.target.value) }))} /></div>
+                  <div className="flex items-center justify-between rounded-2xl border p-4"><div><div className="font-medium">Shop Supplies Enabled</div><div className="text-sm text-slate-500">Apply a configurable fee to invoices.</div></div><Button variant={settings.shopSuppliesEnabled ? 'default' : 'outline'} onClick={() => setSettings((s) => ({ ...s, shopSuppliesEnabled: !s.shopSuppliesEnabled }))}>{settings.shopSuppliesEnabled ? 'On' : 'Off'}</Button></div>
+                  <div className="flex items-center justify-between rounded-2xl border p-4"><div><div className="font-medium">Productivity Tracking</div><div className="text-sm text-slate-500">Show flag-hour performance on the dashboard.</div></div><Button variant={settings.productivityTracking ? 'default' : 'outline'} onClick={() => setSettings((s) => ({ ...s, productivityTracking: !s.productivityTracking }))}>{settings.productivityTracking ? 'On' : 'Off'}</Button></div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader><CardTitle>Live Summary</CardTitle><CardDescription>What the current settings are driving.</CardDescription></CardHeader>
+                <CardContent className="space-y-3 text-sm text-slate-700">
+                  <div className="rounded-2xl border p-4"><div className="font-medium">{settings.techCount} techs</div><div className="text-slate-500">{settings.payStructure} workflow</div></div>
+                  <div className="rounded-2xl border p-4"><div className="font-medium">${settings.laborRate}/hr labor rate</div><div className="text-slate-500">Default rate for new labor lines</div></div>
+                  <div className="rounded-2xl border p-4"><div className="font-medium">Estimates by {settings.estimateDelivery.toLowerCase()}</div><div className="text-slate-500">Customer communication preference</div></div>
+                  <div className="rounded-2xl border p-4"><div className="font-medium">{settings.vendors.length} preferred vendors</div><div className="text-slate-500">{settings.vendors.join(', ')}</div></div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-4">
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader><CardTitle>Statuses</CardTitle><CardDescription>Add or remove workflow statuses.</CardDescription></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex gap-2"><Input placeholder="Add status" value={newStatus} onChange={(e) => setNewStatus(e.target.value)} /><Button onClick={() => addListItem('statuses', newStatus, setNewStatus)}>Add</Button></div>
+                  {settings.statuses.map((status) => <div key={status} className="flex items-center justify-between rounded-xl border p-3"><span>{status}</span><Button variant="outline" size="sm" onClick={() => removeListItem('statuses', status)}>Remove</Button></div>)}
+                </CardContent>
+              </Card>
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader><CardTitle>Vendors</CardTitle><CardDescription>Edit AutoZone, O’Reilly’s, RockAuto, or add more.</CardDescription></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex gap-2"><Input placeholder="Add vendor" value={newVendor} onChange={(e) => setNewVendor(e.target.value)} /><Button onClick={() => addListItem('vendors', newVendor, setNewVendor)}>Add</Button></div>
+                  {settings.vendors.map((vendor) => <div key={vendor} className="flex items-center justify-between rounded-xl border p-3"><span>{vendor}</span><Button variant="outline" size="sm" onClick={() => removeListItem('vendors', vendor)}>Remove</Button></div>)}
+                </CardContent>
+              </Card>
+              <Card className="rounded-2xl shadow-sm">
+                <CardHeader><CardTitle>Team</CardTitle><CardDescription>Edit technicians and advisors used in repair orders.</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <div className="font-medium mb-2">Technicians</div>
+                    <div className="flex gap-2 mb-2"><Input placeholder="Add tech" value={newTech} onChange={(e) => setNewTech(e.target.value)} /><Button onClick={() => addListItem('techs', newTech, setNewTech)}>Add</Button></div>
+                    <div className="space-y-2">{settings.techs.map((tech) => <div key={tech} className="flex items-center justify-between rounded-xl border p-3"><span>{tech}</span><Button variant="outline" size="sm" onClick={() => removeListItem('techs', tech)}>Remove</Button></div>)}</div>
+                  </div>
+                  <div>
+                    <div className="font-medium mb-2">Advisors</div>
+                    <div className="flex gap-2 mb-2"><Input placeholder="Add advisor" value={newAdvisor} onChange={(e) => setNewAdvisor(e.target.value)} /><Button onClick={() => addListItem('advisors', newAdvisor, setNewAdvisor)}>Add</Button></div>
+                    <div className="space-y-2">{settings.advisors.map((advisor) => <div key={advisor} className="flex items-center justify-between rounded-xl border p-3"><span>{advisor}</span><Button variant="outline" size="sm" onClick={() => removeListItem('advisors', advisor)}>Remove</Button></div>)}</div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
