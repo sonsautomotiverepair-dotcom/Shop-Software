@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { supabase } from './lib/supabase';
+
 const defaultSettings = {
   shopName: 'Sons Auto Repair',
   laborRate: 126,
